@@ -143,6 +143,7 @@ class SnakeGame {
     this.bonusProgress = document.getElementById('bonusProgress');
     this.difficultySelect = document.getElementById('difficultySelect');
     this.wallModeSelect = document.getElementById('wallModeSelect');
+    this.obstacleSelect = document.getElementById('obstacleSelect');
     this.soundToggleBtn = document.getElementById('soundToggle');
 
     this.sound = new SoundEffects();
@@ -153,6 +154,8 @@ class SnakeGame {
     this.speed = 120; // ms per tick
     this.gameState = 'START'; // 'START', 'PLAYING', 'PAUSED', 'GAMEOVER'
     this.wallMode = 'solid'; // 'solid' or 'wrap'
+    this.obstacleMode = 'none'; // 'none', 'few', 'many'
+    this.obstacles = [];
     this.difficulty = 'medium';
 
     this.snake = [];
@@ -204,7 +207,39 @@ class SnakeGame {
     this.particles = [];
     this.scoreEl.textContent = this.padScore(0);
 
+    this.generateObstacles();
     this.spawnFood();
+  }
+
+  generateObstacles() {
+    this.obstacles = [];
+    let count = 0;
+    if (this.obstacleMode === 'few') count = 6;
+    if (this.obstacleMode === 'many') count = 15;
+
+    if (count === 0) return;
+
+    const startX = Math.floor(this.gridSize / 4);
+    const startY = Math.floor(this.gridSize / 2);
+
+    let attempts = 0;
+    while (this.obstacles.length < count && attempts < 1000) {
+      attempts++;
+      const x = Math.floor(Math.random() * this.gridSize);
+      const y = Math.floor(Math.random() * this.gridSize);
+
+      // Keep starting area clear (snake body and 5 units ahead/surrounding)
+      if (x >= startX - 3 && x <= startX + 5 && y >= startY - 2 && y <= startY + 2) {
+        continue;
+      }
+
+      // Avoid duplicate obstacles
+      if (this.obstacles.some(obs => obs.x === x && obs.y === y)) {
+        continue;
+      }
+
+      this.obstacles.push({ x, y });
+    }
   }
 
   setDifficulty(diff) {
@@ -231,7 +266,8 @@ class SnakeGame {
     while (!valid) {
       newX = Math.floor(Math.random() * this.gridSize);
       newY = Math.floor(Math.random() * this.gridSize);
-      valid = !this.snake.some(segment => segment.x === newX && segment.y === newY);
+      valid = !this.snake.some(segment => segment.x === newX && segment.y === newY) &&
+              !this.obstacles.some(obs => obs.x === newX && obs.y === newY);
       if (this.bonusFood && this.bonusFood.x === newX && this.bonusFood.y === newY) {
         valid = false;
       }
@@ -246,6 +282,7 @@ class SnakeGame {
       newX = Math.floor(Math.random() * this.gridSize);
       newY = Math.floor(Math.random() * this.gridSize);
       valid = !this.snake.some(segment => segment.x === newX && segment.y === newY) &&
+              !this.obstacles.some(obs => obs.x === newX && obs.y === newY) &&
               !(this.food.x === newX && this.food.y === newY);
     }
     this.bonusFood = { x: newX, y: newY };
@@ -422,6 +459,7 @@ class SnakeGame {
     this.sound.init();
     this.setDifficulty(this.difficultySelect.value);
     this.wallMode = this.wallModeSelect.value;
+    this.obstacleMode = this.obstacleSelect ? this.obstacleSelect.value : 'none';
 
     let multStr = '1.0x';
     if (this.difficulty === 'medium') multStr = '1.5x';
@@ -480,6 +518,12 @@ class SnakeGame {
 
     // Self Collision
     if (this.snake.some(segment => segment.x === head.x && segment.y === head.y)) {
+      this.gameOver();
+      return;
+    }
+
+    // Obstacle Collision
+    if (this.obstacles.some(obs => obs.x === head.x && obs.y === head.y)) {
       this.gameOver();
       return;
     }
@@ -608,6 +652,38 @@ class SnakeGame {
       this.ctx.lineTo(this.canvas.width, y);
       this.ctx.stroke();
     }
+
+    // Draw Obstacles (Walls taking up 1 grid space)
+    this.obstacles.forEach(obs => {
+      const x = obs.x * this.tileSize;
+      const y = obs.y * this.tileSize;
+
+      this.ctx.save();
+      // Outer neon red glow and border
+      this.ctx.fillStyle = '#ff2a6d';
+      this.ctx.shadowColor = '#ff2a6d';
+      this.ctx.shadowBlur = 10;
+      this.roundRect(this.ctx, x + 1, y + 1, this.tileSize - 2, this.tileSize - 2, 4);
+      this.ctx.fill();
+
+      // Inner fill
+      this.ctx.fillStyle = '#1f2833';
+      this.ctx.shadowBlur = 0;
+      this.roundRect(this.ctx, x + 3, y + 3, this.tileSize - 6, this.tileSize - 6, 2);
+      this.ctx.fill();
+
+      // Center accent cross/x line
+      this.ctx.strokeStyle = '#ff2a6d';
+      this.ctx.lineWidth = 1.5;
+      this.ctx.beginPath();
+      this.ctx.moveTo(x + 6, y + 6);
+      this.ctx.lineTo(x + this.tileSize - 6, y + this.tileSize - 6);
+      this.ctx.moveTo(x + this.tileSize - 6, y + 6);
+      this.ctx.lineTo(x + 6, y + this.tileSize - 6);
+      this.ctx.stroke();
+
+      this.ctx.restore();
+    });
 
     // Draw Regular Food (Glowing Neon Circle with Pulsing Effect)
     if (this.food) {
